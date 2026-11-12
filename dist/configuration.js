@@ -1,5 +1,11 @@
+import { iotDevices, iotPowerCables } from "./scene-iot.js";
+import { distributionPipes } from "./scene-distribution.js";
+import { electricityFeatures } from "./scene-electricity.js";
 import { features } from "./geography.js";
+import { regionalFeatures, riverPipeline } from "./scene-region.js";
 import { photos } from "./photos.js";
+import { fencePlantings } from "./scene-flowers.js";
+import { waterSystemFeatures } from "./scene-water-system.js";
 export const stages = [
   {
     id: 1,
@@ -12,10 +18,16 @@ export const stages = [
   {
     id: 2,
     title: "Planned Improvements",
-    available: false,
-    additions: [],
+    available: true,
+    additions: [{
+      id: "S-001", name: "Floating solar panels", kind: "solar",
+      points: [[174.03,-96.94],[258.60,-25.88],[220.38,19.88],[135.81,-51.18]],
+      source: "Sociathon proposal reference", confidence: "Illustrative proposal",
+      notes: "Concept layout only. Array placement and size require engineering and reservoir-use review.",
+      columns: 6, rows: 3,
+    }, ...waterSystemFeatures, ...fencePlantings, riverPipeline, ...electricityFeatures, ...iotDevices, ...iotPowerCables],
     removals: [],
-    overrides: {},
+    overrides: { "W-001": { color: "#247da8", waterAppearance: { referenceMix: 0, clarity: 0.82, rippleStrength: 0.025 } } },
   },
   {
     id: 3,
@@ -26,6 +38,7 @@ export const stages = [
     overrides: {},
   },
 ];
+const knownFeatures = [...features, ...regionalFeatures, ...stages.flatMap(stage => stage.additions), ...distributionPipes([...features, ...waterSystemFeatures])];
 export const observations = [
   [
     "Intermittent water supply",
@@ -66,6 +79,7 @@ export function stageFeatures(stageId) {
     ...features
       .filter((f) => !stage.removals.includes(f.id))
       .map((f) => ({ ...f, ...stage.overrides[f.id] })),
+    ...regionalFeatures,
     ...stage.additions,
   ];
 }
@@ -106,7 +120,7 @@ export function validate(c) {
     fail();
   for (const [id, v] of Object.entries(c.overrides)) {
     if (
-      !features.some((f) => f.id === id) ||
+      !knownFeatures.some((f) => f.id === id) ||
       !v ||
       Object.keys(v).some(
         (k) =>
@@ -141,7 +155,7 @@ export function validate(c) {
     if (
       !b ||
       !str(b.name, 150) ||
-      (b.feature && !features.some((f) => f.id === b.feature))
+      (b.feature && !knownFeatures.some((f) => f.id === b.feature))
     )
       fail();
     if (b.camera) {
@@ -150,9 +164,9 @@ export function validate(c) {
         !["orbit", "map", "fly", "walk"].includes(v.mode) ||
         !Array.isArray(v.target) ||
         v.target.length !== 3 ||
-        !v.target.every((n) => safeNum(n, 3000)) ||
+        !v.target.every((n) => safeNum(n, 16000)) ||
         !["x", "y", "z", "yaw", "pitch", "distance"].every((k) =>
-          safeNum(v[k], 10000),
+          safeNum(v[k], 50000),
         )
       )
         fail();
@@ -173,7 +187,7 @@ export const center = (f) =>
     [0, 0],
   );
 export function applyEdits(c, stageId = 1) {
-  return stageFeatures(stageId).map((f) => {
+  const edited = stageFeatures(stageId).map((f) => {
     const o = c.overrides[f.id];
     if (!o) return f;
     const [cx, cz] = center(f),
@@ -195,4 +209,7 @@ export function applyEdits(c, stageId = 1) {
       points,
     };
   });
+  if (stageId !== 2) return edited;
+  return [...edited.filter(f => f.id !== "PIPE-002" && !f.id.startsWith("BRANCH-")),
+    ...distributionPipes(edited)];
 }

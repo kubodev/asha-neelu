@@ -7,7 +7,7 @@
     <title>Malkapuram · Village Atlas</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
-  <body>
+  <body class="map-layout">
     <header>
       <div class="brand">
         <span class="brandmark"
@@ -50,7 +50,13 @@
           </button>
         </div>
       </section>
-      <section class="workspace">
+      <section class="timeline" aria-label="Development stages">
+        <div class="timeline-title">
+          <i data-i="timeline"></i><span>Development timeline</span>
+        </div>
+        <div id="stages" aria-label="Scroll through development stages"></div>
+      </section>
+      <section class="workspace collapsed">
         <div id="viewport">
           <canvas
             id="scene"
@@ -59,39 +65,44 @@
           ></canvas>
           <div id="pins"></div>
           <div id="load">Loading village model…</div>
-          <div class="map-top">
-            <div class="map-dropdown">
-              <button id="mode" data-action="mode"></button>
-              <div id="mode-menu" class="popup" hidden></div>
-            </div>
-            <div class="map-dropdown">
-              <button data-action="layers">
-                <i data-i="layers"></i> Layers
+          <button id="toggle-map-tools" data-action="map-tools" aria-expanded="false" aria-controls="map-controls">Map tools</button>
+          <div id="map-controls" hidden>
+            <div class="map-top">
+              <div class="map-dropdown">
+                <button id="mode" data-action="mode"></button>
+                <div id="mode-menu" class="popup" hidden></div>
+              </div>
+              <div class="map-dropdown">
+                <button data-action="layers">
+                  <i data-i="layers"></i> Layers
+                </button>
+                <div id="layer-menu" class="popup" hidden></div>
+              </div>
+              <button
+                id="show-panel"
+                class="map-icon"
+                data-action="sidebar"
+                aria-label="Open site overview"
+              >
+                <i data-i="panel"></i>
               </button>
-              <div id="layer-menu" class="popup" hidden></div>
             </div>
+            <button class="aux-tool" data-action="iot">Tank IoT demo</button>
+            <button class="aux-tool" data-action="region" title="View the wider landscape and Krishna River">Regional view</button>
             <button
-              id="show-panel"
-              class="map-icon"
-              data-action="sidebar"
-              aria-label="Open site overview"
+              id="compass"
+              data-action="north"
+              title="Reset north orientation"
+              aria-label="Reset north orientation"
             >
-              <i data-i="panel"></i>
+              <b>N</b
+              ><svg viewBox="0 0 28 36" width="19" height="25">
+                <path fill="#244c3a" d="M14 1 23 32 14 26z" />
+                <path fill="#aeb9ab" d="M14 1 5 32 14 26z" />
+              </svg>
             </button>
+            <div class="map-tools" id="map-tools"></div>
           </div>
-          <button
-            id="compass"
-            data-action="north"
-            title="Reset north orientation"
-            aria-label="Reset north orientation"
-          >
-            <b>N</b
-            ><svg viewBox="0 0 28 36" width="19" height="25">
-              <path fill="#244c3a" d="M14 1 23 32 14 26z" />
-              <path fill="#aeb9ab" d="M14 1 5 32 14 26z" />
-            </svg>
-          </button>
-          <div class="map-tools" id="map-tools"></div>
           <div id="tourbar" hidden></div>
           <div id="movement" hidden></div>
           <div class="map-foot">
@@ -122,12 +133,7 @@
           <div id="side-content"></div>
         </aside>
       </section>
-      <section class="timeline">
-        <div class="timeline-title">
-          <i data-i="timeline"></i><span>Development timeline</span>
-        </div>
-        <div id="stages"></div>
-      </section>
+
     </main>
     <dialog id="dialog">
       <div class="dialog-head">
@@ -144,6 +150,6 @@
       <div id="dialog-body"></div>
     </dialog>
     <div id="toast" role="status"></div>
-    <script type="module" src="./app.js?v=1.1"></script>
+    <script type="module" src="./app.js?v=depth-fix-2"></script>
   </body>
 </html>

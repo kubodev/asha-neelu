@@ -1,3 +1,4 @@
+import { regionalExtent } from "./scene-region.js";
 import { extent, features as baseline } from "./geography.js";
 import {
   clamp,
@@ -7,17 +8,17 @@ import {
   view,
   perspective,
   ortho,
-  inside,
   nearest,
 } from "./scene-math.js";
-import { createGpu } from "./scene-gpu.js";
+import { createGpu } from "./scene-gpu.js?v=depth-fix-2";
 import { createInset } from "./scene-inset.js";
+import { navigationSolids, blockedAt, slideMove } from "./scene-collision.js";
 
 const FOV = (44 * Math.PI) / 180;
 const HALF_PI = Math.PI / 2;
 const eyeHeight = 5.2;
-const halfX = extent.width / 2,
-  halfZ = extent.depth / 2;
+const halfX = regionalExtent.width / 2,
+  halfZ = regionalExtent.depth / 2;
 const aerial = (mode) => mode === "orbit" || mode === "map";
 const aliases = {
   building: "buildings",
@@ -52,7 +53,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
     selected = 0,
     width = 1,
     height = 1,
-    quality = "medium",
+    quality = "high",
     dirty = true,
     alive = true,
     matrices,
@@ -81,24 +82,12 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
     },
     onError,
   );
-  const inset = createInset(canvas.parentNode, extent);
+  const inset = createInset(canvas.parentNode, regionalExtent);
   inset.setFeatures(items);
   let solid = [],
     paths = [];
   function indexNavigation() {
-    solid = items
-      .filter((f) => f.kind === "building" || f.kind === "water")
-      .map((f) => {
-        const x = f.points.map((p) => p[0]),
-          z = f.points.map((p) => p[1]);
-        return {
-          p: f.points,
-          loX: Math.min(...x),
-          hiX: Math.max(...x),
-          loZ: Math.min(...z),
-          hiZ: Math.max(...z),
-        };
-      });
+    solid = navigationSolids(items);
     paths = items
       .filter((f) => f.kind === "road")
       .flatMap((f) =>
@@ -108,15 +97,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
       );
   }
   indexNavigation();
-  const blocked = (x, z) =>
-    solid.some(
-      (s) =>
-        x >= s.loX &&
-        x <= s.hiX &&
-        z >= s.loZ &&
-        z <= s.hiZ &&
-        inside(x, z, s.p),
-    );
+  const blocked = (x, z) => blockedAt(solid, x, z);
   function roadPoint(x, z) {
     let best = null,
       distance = Infinity;
@@ -185,10 +166,16 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
   function update() {
     const { eye, forward, right } = eyeAndAxes(),
       aspect = width / height;
+    gpu.setEye(eye,2*Math.tan(FOV/2)/Math.max(1,canvas.height),mode==="map"?distance:0);
+    const sceneRadius=Math.hypot(halfX,halfZ)+500;
+    const far=Math.hypot(...eye)+sceneRadius;
+    const near=aerial(mode)
+      ? clamp(distance*.02,.3,300)
+      : clamp(Math.abs(eye[1])*.02,.28,100);
     const proj =
       mode === "map"
-        ? ortho(distance * 2 * Math.tan(FOV / 2), aspect, 0.3, 12500)
-        : perspective(FOV, aspect, aerial(mode) ? 1 : 0.28, 12500);
+        ? ortho(distance * 2 * Math.tan(FOV / 2), aspect, Math.max(.1,distance-sceneRadius), distance+sceneRadius)
+        : perspective(FOV, aspect, near, far);
     matrices = multiply(proj, view(eye, forward, right));
     dirty = true;
     const current = camera();
@@ -204,10 +191,10 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
       -Math.cos(yaw) * sinTilt,
     ];
     const corners = [
-      [-halfX, 0, -halfZ],
-      [halfX, 0, -halfZ],
-      [halfX, 0, halfZ],
-      [-halfX, 0, halfZ],
+      [-extent.width/2, 0, -extent.depth/2],
+      [extent.width/2, 0, -extent.depth/2],
+      [extent.width/2, 0, extent.depth/2],
+      [-extent.width/2, 0, extent.depth/2],
     ];
     // Centre the projected rectangle between the two sides of each frustum axis.
     // Perspective makes its near edge wider than the far edge.
@@ -239,11 +226,13 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
     const rect = canvas.getBoundingClientRect();
     width = Math.max(rect.width, 1);
     height = Math.max(rect.height, 1);
-    const dpr = Math.min(
-      devicePixelRatio || 1,
-      quality === "low" ? 1 : quality === "high" ? 2 : 1.5,
-      3072 / Math.max(width, height),
-    );
+    // High quality supersamples even 1x displays and uses full Retina resolution.
+    const pixelScale = quality === "high"
+      ? Math.max(2, Math.min(devicePixelRatio || 1, 3))
+      : Math.min(devicePixelRatio || 1, quality === "low" ? 1 : 1.5);
+    const dpr = Math.min(pixelScale,
+      (quality === "high" ? 5120 : 3072) / Math.max(width, height),
+      Math.sqrt((quality === "high" ? 12000000 : 6000000) / (width * height)));
     canvas.width = Math.max(1, Math.round(width * dpr));
     canvas.height = Math.max(1, Math.round(height * dpr));
     if (fitting) distance = fitDistance();
@@ -327,7 +316,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
     if (!(factor > 0)) return;
     transition = null;
     fitting = false;
-    if (aerial(mode)) distance = clamp(distance / factor, 19, 10000);
+    if (aerial(mode)) distance = clamp(distance / factor, 19, 40000);
     else {
       const dir = factor > 1 ? "forward" : "back";
       for (let i = 0; i < 4; i++) step(dir, mode === "fly" ? 7 : 1);
@@ -370,8 +359,11 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
         x = road.point[0] + ((x - road.point[0]) * radius) / road.d;
         z = road.point[1] + ((z - road.point[1]) * radius) / road.d;
       }
-      if (blocked(x, z)) return;
-      position = [x, eyeHeight, z];
+      const next = slideMove(solid, [position[0], position[2]], [x, z], (p) => {
+        const lane = roadPoint(...p);
+        return lane && lane.d <= Math.max(0.4, lane.path.width * 0.5 - 0.65) + 0.001;
+      });
+      position = [next[0], eyeHeight, next[1]];
     } else {
       position = [
         clamp(x, -halfX * 1.6, halfX * 1.6),
@@ -404,7 +396,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
     );
     const end = {
       target: [x, (f.height || 0) * 0.35, z],
-      distance: clamp(span * 2.2, 115, 1550),
+      distance: clamp(span * 2.2, 115, f.kind === "river" ? 22000 : 1550),
     };
     if (reduced.matches) {
       target = end.target;
@@ -658,7 +650,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
       mode === "map"
         ? HALF_PI
         : clamp(b.pitch, aerial(mode) ? 0.16 : -1.48, 1.51);
-    distance = clamp(b.distance, 19, 10000);
+    distance = clamp(b.distance, 19, 40000);
     if (!aerial(mode) && [b.x, b.y, b.z].every(Number.isFinite)) {
       if (mode === "fly")
         position = [
@@ -684,6 +676,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
   resize();
   frameId = requestAnimationFrame(frame);
   return {
+    setTankIoT(values,aux) { gpu.setTankIoT(values,aux); dirty=true; },
     setMode,
     zoom,
     fit,

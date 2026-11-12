@@ -20,7 +20,7 @@ export function createInset(parent, extent) {
     bg.fillRect(l, t, extent.width * factor, extent.depth * factor);
     for (const f of items) {
       if (
-        !["water", "building", "land", "road"].includes(f.kind) ||
+        !["water", "river", "pipe", "building", "land", "road"].includes(f.kind) ||
         !f.points.length
       )
         continue;
@@ -30,14 +30,14 @@ export function createInset(parent, extent) {
         if (i) bg.lineTo(...v);
         else bg.moveTo(...v);
       });
-      if (f.kind === "road") {
+      if (f.kind === "road" || f.kind === "pipe") {
         bg.strokeStyle = "#f7f3df";
-        bg.lineWidth = Math.max(1, f.width * factor);
+        bg.lineWidth = Math.max(1, (f.width || 6) * factor);
         bg.stroke();
       } else {
         bg.closePath();
         bg.fillStyle =
-          f.kind === "water"
+          ["water", "river"].includes(f.kind)
             ? "#597677"
             : f.kind === "building"
               ? "#999483"

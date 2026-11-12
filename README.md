@@ -30,6 +30,22 @@ The overheads establish visible arrangement. Roof heights, unseen walls, small-s
 
 1. Keep original screenshots in the sibling `img/` folder. Optimised reference images and thumbnails live in `dist/assets/photos/` and `dist/assets/references/`. Preserve visible source credits. Add or update entries in `dist/photos.js` with their paths, stable IDs, location confidence, direction, date and evidence notes.
 2. Edit permanent geometry in `tools/prepare_geography.py` and regenerate the baseline following GEOGRAPHY.md. Browser corrections use separate overrides. The stable feature IDs and local east/south coordinates link edits, viewpoints and tour stops.
-3. Stage definitions in `dist/configuration.js` contain additions, removals and property overrides. The current interface only activates Stage 1. When implementing a later stage, enable it and pass applyEdits(configuration, stageId) to scene.setFeatures. The stageFeatures function composes its changes against the baseline. Retain Stage 1 for recovery. Store revised water colour on the water feature and use its waterAppearance override for referenceMix, clarity, rippleStrength and bankWidth. The baseline material defaults live in dist/water.js.
+3. Stage definitions in `dist/configuration.js` contain additions, removals and property overrides. The interface activates configured stages and passes applyEdits(configuration, stageId) to scene.setFeatures. Stage 2 currently contains an illustrative floating solar array only; later improvements remain unmodeled. The stageFeatures function composes its changes against the baseline. Retain Stage 1 for recovery. Store revised water colour on the water feature and use its waterAppearance override for referenceMix, clarity, rippleStrength and bankWidth. The baseline material defaults live in dist/water.js.
 
 The renderer, navigation and orientation inset are in the scene modules. The HTML, interface styles and interaction code live in `dist/index.html`, `dist/style.css` and `dist/app.js`.
+
+## Building exteriors and walking collisions
+
+`dist/scene-buildings.js` adds reference-inspired rural façades to the existing roof envelopes: muted plaster, concrete parapets, doors, window grilles, ventilation blocks, corrugated awnings, entrance steps and occasional rooftop tanks. These details are illustrative, not surveyed household attributes. Footprints, configured heights and feature IDs remain unchanged. Entrance faces follow nearby roads; details vary deterministically by building ID. The renderer uses procedural materials with no additional downloads.
+
+`dist/scene-collision.js` shares the entrance-step layout with the renderer. Walking uses approximately 30 cm body clearance, swept movement checks and wall sliding. Navigation obstacles rebuild after feature edits. Existing road-constrained walking and free-fly controls are retained.
+
+Run the geometry and collision regression checks with `node --test tests/buildings.test.mjs` from this directory.
+
+The model's terrain materials now stay active in both aerial and walking views, rather than fading back to the low-resolution source screenshot. High render quality is the default, using at least 2× supersampling where the pixel budget allows (maximum 5120 pixels per side and 12 megapixels). Medium and low quality remain available in Help. The original Source imagery layer is unchanged; new soil detail and field furrows are illustrative materials, not newly surveyed imagery.
+
+The reservoir now has an illustrative dark-metal grill fence around the modeled bank, with a road-side access opening. The fence is included in walkthrough collision geometry.
+
+The current-condition reservoir surface uses an illustrative stagnant-water appearance with opaque silt, algae mats and muddy banks. It represents reported concerns visually and is not a water-quality measurement or verified claim.
+
+Stage 2 is available and adds a single illustrative floating solar-panel array to the reservoir. The array is the only Stage 2 addition; aquatic plants, tanks, pumps and distribution works are not included yet. Its footprint fits inside the traced water outline. Panel size and placement are conceptual pending engineering and reservoir-use review.

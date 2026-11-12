@@ -1,5 +1,7 @@
+import { cabinetLabels } from "./scene-electricity.js";
 import { buildMeshes } from "./scene-mesh.js";
 import { waterAppearance } from "./water.js";
+import { groundShader } from "./scene-ground.js?v=depth-fix-2";
 
 const vertex = `
 attribute vec3 position, color;
@@ -7,6 +9,8 @@ attribute float material, feature, treeId;
 attribute vec4 instance;
 uniform mat4 camera;
 uniform bool tree;
+uniform float time;
+uniform vec2 iotAux;
 varying vec3 world, tint;
 varying float surface, objectId;
 void main() {
@@ -21,6 +25,12 @@ void main() {
     tint *= .94 + .1*fract(treeId*.128);
     objectId = treeId;
   }
+  if(material>29.5 && material<30.5) {
+    vec3 local=position-color;
+    float angle=time*2.8*iotAux.x;
+    world=color+vec3(local.x,local.y*cos(angle)-local.z*sin(angle),local.y*sin(angle)+local.z*cos(angle));
+    tint=vec3(.22,.57,.62);
+  }
   gl_Position = camera * vec4(world,1.);
 }`;
 const fragment = `
@@ -31,8 +41,15 @@ uniform bool picking, imagery;
 uniform float time, selected;
 uniform vec2 extent;
 uniform vec3 waterStyle;
-uniform sampler2D terrain, overhead;
+uniform vec4 tankIoT;
+uniform vec2 iotAux;
+uniform sampler2D terrain, overhead, cabinetAtlas;
 float hash(vec2 p) {return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+float noise(vec2 p) {
+  vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);
+}
+${groundShader}
 void main(){
   if (picking) {
     float id=floor(objectId+.5);
@@ -42,29 +59,108 @@ void main(){
   vec2 uv=world.xz/extent+.5;
   vec3 c=tint; float alpha=1.;
   if (surface<1.5) {
-    c=texture2D(terrain,uv).rgb;
+    c=detailedGround(texture2D(terrain,uv).rgb,c,0.);
   } else if (surface>3.5 && surface<4.5) {
     vec3 sampleColor=texture2D(overhead,uv).rgb;
-    vec3 waterBase = mix(c,sampleColor,waterStyle.x);
-    waterBase = mix(waterBase, vec3(.24,.27,.19), waterStyle.y);
-    float wave=sin(world.x*.48+world.z*.17+time*.7+sin(world.z*.11))*sin(world.z*.49+time*.33);
-    c=waterBase+vec3(.8,1.,1.02)*waterStyle.z*wave;
+    // Illustrative stagnant-water treatment; this is not a measured water test.
+    vec2 p=world.xz;
+    float broad=noise(p*.105)*.58+noise(p*.24)*.29+noise(p*.52)*.13;
+    float matField=noise(p*.073+vec2(3.7,8.2))*.58+noise(p*.19)*.42;
+    float mats=smoothstep(.48,.68,matField);
+    float wisps=smoothstep(.54,.72,noise(p*.31+vec2(2.1,5.6)))*.25;
+    float sediment=smoothstep(.35,.72,broad);
+    vec3 stagnant=mix(vec3(.20,.20,.14),vec3(.34,.29,.18),sediment*.58);
+    stagnant=mix(stagnant,vec3(.16,.24,.12),mats*.92);
+    stagnant=mix(stagnant,vec3(.39,.37,.25),wisps);
+    float sheen=sin(p.x*.63+p.y*.29+sin(p.y*.17))*sin(p.y*.51-p.x*.13);
+    stagnant+=vec3(.025,.03,.018)*sheen*detailVisibility(.63);
+    vec3 cleanWater=mix(vec3(.035,.31,.53),vec3(.10,.53,.69),broad*.55);
+    float cleanRipple=sin(p.x*.48+time*.65+sin(p.y*.12))*sin(p.y*.44-time*.28);
+    cleanWater+=vec3(.035,.07,.075)*cleanRipple*detailVisibility(.48);
+    c=mix(stagnant,sampleColor,waterStyle.x*.12);
+    c=mix(c,cleanWater,waterStyle.y);
+  } else if(surface>16.5 && surface<17.5) {
+    float mud=noise(world.xz*.34)*.55+noise(world.xz*.91)*.3+noise(world.xz*2.7)*.15;
+    c=mix(vec3(.22,.19,.13),vec3(.38,.32,.21),mud);
+    float algae=noise(world.xz*.18+vec2(4.1,2.3));
+    c=mix(c,vec3(.22,.27,.14),smoothstep(.57,.78,algae)*.48);
+    c*=.96+.12*(noise(world.xz*4.)-.5)*detailVisibility(4.);
   } else if (surface>4.5 && surface<5.5) {
     vec2 p=world.xz+world.y*.8;
     float cluster=hash(floor(p*.55));
-    c *= .87+.16*cluster+.10*hash(floor(p*2.));
+    c *= .98+(.16*(cluster-.5)+.10*(hash(floor(p*2.))-.5))*detailVisibility(2.);
   } else if (surface>5.5 && surface<6.5) {
     alpha=.36;
+  } else if(surface>32.5 && surface<33.5) {
+    c=tint; alpha=.12;
+  } else if(surface>30.5 && surface<31.5) {
+    float pulse=.5+.5*sin(world.y*6.+time*11.);
+    c=mix(tint,vec3(.72,.90,.95),pulse*.45);
+    alpha=tankIoT.z*.78;
+  } else if(surface>31.5 && surface<32.5) {
+    float ripple=sin(world.x*2.7+time*2.)*sin(world.z*2.3-time*1.6);
+    c=tint+vec3(.04,.09,.10)*ripple*tankIoT.z;
+    alpha=.23+.24*tankIoT.z;
+  } else if(surface>27.5 && surface<28.5) {
+    c=iotAux.y>.5 ? vec3(.1,.7,.3) : vec3(.9,.17,.1);
+  } else if(surface>29.5 && surface<30.5) {
+    c=tint;
+  } else if(surface>24.5 && surface<26.5) {
+    float mainGauge=surface<25.5 ? 1. : 0.;
+    float level=mix(tankIoT.y,tankIoT.x,mainGauge);
+    float bottom=mix(.7,10.7,mainGauge), top=mix(8.2,22.,mainGauge);
+    c=world.y < mix(bottom,top,level) ? vec3(.05,.65,.88) : vec3(.12,.20,.24);
+  } else if(surface>26.5 && surface<27.5) {
+    c=tankIoT.w>.5 ? vec3(.95,.19,.1) : tankIoT.z>.5 ? vec3(.1,.92,.35) : vec3(.95,.69,.14);
+  } else if(surface>23.5 && surface<24.5) {
+    c=tint; alpha=.15;
+  } else if(surface>22.5 && surface<23.5) {
+    float labelU=gl_FrontFacing ? tint.x : 1.-tint.x;
+    c=texture2D(cabinetAtlas,vec2(labelU,(tint.z+tint.y)/16.)).rgb;
+  } else if(surface>21.5 && surface<22.5) {
+    c=tint;
+  } else if(surface>20.5 && surface<21.5) {
+    c=tint; alpha=.8;
+  } else if(surface>19.5 && surface<20.5) {
+    c=tint;
+  } else if(surface>18.5 && surface<19.5) {
+    float flow=sin(world.z*.06+world.x*.17+time*.4)*.018;
+    c=tint+vec3(flow,flow,flow)+noise(world.xz*.025)*.035;
+  } else if(surface>17.5 && surface<18.5) {
+    float patch=noise(world.xz*.008)*.6+noise(world.xz*.026)*.4;
+    c=earthSample()*(.94+patch*.15);
+    c=mix(c,vec3(.46,.48,.29),smoothstep(.59,.81,patch)*.32);
+  } else if(surface>14.5) {
+    vec3 reference=mix(c,texture2D(overhead,uv).rgb,.43);
+    c=detailedRoad(c,reference,surface<15.5 ? 1. : 0.);
+  } else if(surface>9.5) {
+    vec2 face=vec2(world.x+world.z*.73,world.y);
+    float grain=mix(.5,noise(face*15.),detailVisibility(15.));
+    if(surface<10.5) {
+      float wear=noise(face*.63)*.6+noise(face*2.3)*.4;
+      float damp=(1.-smoothstep(.3,2.4+noise(face*.4),world.y))*.19;
+      float streak=noise(vec2(face.x*2.3,face.y*.14));
+      c*=.89+.13*wear+.045*grain-damp;
+      c=mix(c,vec3(.48,.46,.38),smoothstep(.70,.86,wear)*.28);
+      c*=1.-.06*streak;
+    } else if(surface<11.5) {
+      c*=.86+.17*noise((world.xz+world.y)*1.3)+.06*grain;
+    } else if(surface<12.5) {
+      c*=.94+.06*grain;
+    } else if(surface<13.5) {
+      c*=.86+.15*noise(vec2(face.x*9.,face.y*.4));
+    }
   } else if(surface>8.5) {
     vec3 roof = texture2D(overhead,uv).rgb;
     c=mix(c,roof*1.09,.77);
   } else if(surface>7.5) {
-    c=mix(texture2D(terrain,uv).rgb,c,.12);
+    vec3 reference=mix(texture2D(terrain,uv).rgb,c,.12);
+    c=detailedGround(reference,c,1.);
   } else if(surface>6.5) {
-    c=mix(c,texture2D(overhead,uv).rgb,.43);
-    c*=.97+.06*hash(floor(world.xz*1.4));
+    vec3 reference=mix(c,texture2D(overhead,uv).rgb,.43);
+    c=detailedRoad(c,reference,0.);
   } else if (surface>1.5 && surface<3.5) {
-    c*=.985+.028*hash(floor((world.xz+world.y)*.7));
+    c*=.999+.028*(hash(floor((world.xz+world.y)*.7))-.5)*detailVisibility(.7);
   }
   if(selected>.5 && abs(objectId-selected)<.2) c=mix(c,vec3(.94,.69,.19),.20);
   gl_FragColor=vec4(c,alpha);
@@ -78,12 +174,18 @@ function makeShader(gl, type, src) {
   return shader;
 }
 export function createGpu(canvas, features, extent, onAsset, onError) {
-  const gl = canvas.getContext("webgl", {
+  const contextOptions = {
     alpha: true,
     antialias: true,
     powerPreference: "high-performance",
     premultipliedAlpha: false,
-  });
+  };
+  const gl = canvas.getContext("webgl", contextOptions) ||
+    canvas.getContext("webgl", {
+      ...contextOptions,
+      antialias: false,
+      powerPreference: "default",
+    });
   if (!gl)
     throw new Error(
       "3D rendering requires WebGL. Enable hardware acceleration or open the atlas in another browser.",
@@ -117,16 +219,29 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
       "selected",
       "picking",
       "waterStyle",
+      "imagery",
+      "earthDetail",
+      "eyePosition",
+      "cabinetAtlas",
+      "tankIoT",
+      "iotAux",
+      "detailResolution",
     ].map((k) => [k, gl.getUniformLocation(program, k)]),
   );
   gl.uniform2f(u.extent, extent.width, extent.depth);
   gl.uniform1i(u.terrain, 0);
   gl.uniform1i(u.overhead, 1);
+  gl.uniform1i(u.earthDetail, 2);
+  gl.uniform1i(u.cabinetAtlas, 3);
+  gl.uniform4f(u.tankIoT,.42,.12,0,0);
+  gl.uniform2f(u.iotAux,1,1);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   const inst = gl.getExtension("ANGLE_instanced_arrays");
+  const anisotropy = gl.getExtension("EXT_texture_filter_anisotropic") ||
+    gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic");
   let destroyed = false;
-  function texture(name) {
+  function texture(name, repeat = false) {
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(
@@ -149,13 +264,20 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
       if (destroyed) return;
       // WebGL 1 mipmaps require power-of-two dimensions.
       const tile = document.createElement("canvas");
-      const cap = Math.min(2048, gl.getParameter(gl.MAX_TEXTURE_SIZE));
-      tile.width = Math.min(cap, 2 ** Math.round(Math.log2(img.width)));
-      tile.height = Math.min(cap, 2 ** Math.round(Math.log2(img.height)));
+      const cap = Math.min(4096, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+      tile.width = Math.min(cap, 2 ** Math.ceil(Math.log2(img.width)));
+      tile.height = Math.min(cap, 2 ** Math.ceil(Math.log2(img.height)));
       tile.getContext("2d").drawImage(img, 0, 0, tile.width, tile.height);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, tile);
       gl.generateMipmap(gl.TEXTURE_2D);
+      if (repeat) {
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      }
+      if (anisotropy) gl.texParameterf(gl.TEXTURE_2D,
+        anisotropy.TEXTURE_MAX_ANISOTROPY_EXT,
+        Math.min(16, gl.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
       gl.texParameteri(
         gl.TEXTURE_2D,
         gl.TEXTURE_MIN_FILTER,
@@ -165,10 +287,35 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     };
     img.onerror = () =>
       onError?.("The " + name + " terrain image could not be loaded.");
-    img.src = new URL("./assets/" + name + ".jpg", import.meta.url).href;
+    img.src = new URL("./assets/" + name + (repeat ? ".png" : ".jpg"), import.meta.url).href;
     return tex;
   }
-  const textures = [texture("ground"), texture("satellite")];
+  const textures = [texture("ground"), texture("satellite"), texture("earth-detail", true)];
+  const plateCanvas=document.createElement("canvas");
+  plateCanvas.width=1024;
+  plateCanvas.height=2048;
+  const plateContext=plateCanvas.getContext("2d");
+  plateContext.fillStyle="#e8edf0";
+  plateContext.fillRect(0,0,1024,2048);
+  cabinetLabels.forEach((label,index)=>{
+    const y=index*128;
+    plateContext.fillStyle="#263942";
+    plateContext.textAlign="center";
+    plateContext.textBaseline="middle";
+    plateContext.font="bold 64px sans-serif";
+    plateContext.fillText(label,512,y+48,980);
+    plateContext.font="42px sans-serif";
+    plateContext.fillText(index===0?"SOLAR DC INPUT":index===1?"DC → AC":index===3?"SENSORS + PUMP RELAY":index===2?"AC LIGHTING CIRCUIT":"WATER IoT MONITORING",512,y+100,940);
+  });
+  const cabinetTexture=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,cabinetTexture);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,plateCanvas);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  textures.push(cabinetTexture);
+
   let batches = {},
     instanceBuffer,
     instanceData = [];
@@ -250,6 +397,11 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     gl.uniform1f(u.time, time);
     gl.uniform1f(u.selected, selected);
     gl.uniform1i(u.picking, pick ? 1 : 0);
+    gl.uniform1i(u.imagery, layers.imagery ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, textures[3]);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, textures[2]);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, textures[1]);
     gl.activeTexture(gl.TEXTURE0);
@@ -266,12 +418,41 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
       gl.depthMask(true);
     }
     if (layers.roads) batch("roads");
+    batch("fence");
+    batch("solar");
+    batch("waterSystem");
+    if (!pick) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
+    batch("electrical");
+    gl.disable(gl.BLEND);
     if (layers.water) batch("water");
     if (layers.buildings) {
       batch("buildings");
       if (layers.outlines) batch("outlines");
     }
-    if (layers.vegetation) batch("tree", true);
+    if (layers.vegetation) {
+      batch("tree", true);
+      batch("fencePlants");
+    }
+    if (!pick) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      batch("filterFlow");
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    }
+    // Draw the underground route as a readable plan overlay across surface features.
+    gl.disable(gl.DEPTH_TEST);
+    if (!pick) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
+    batch("blueprint");
+    gl.disable(gl.BLEND);
+    gl.enable(gl.DEPTH_TEST);
   }
   function pick(matrix, layers, selected, time, x, y) {
     draw(matrix, layers, selected, time, true);
@@ -281,6 +462,11 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     return pixel[0] + pixel[1] * 256 + pixel[2] * 65536;
   }
   return {
+    setTankIoT(values,aux=[1,1]) { gl.uniform4fv(u.tankIoT,values); gl.uniform2fv(u.iotAux,aux); },
+    setEye(eye,pixelScale,mapDistance) {
+      gl.uniform3fv(u.eyePosition,eye);
+      gl.uniform2f(u.detailResolution,pixelScale,mapDistance);
+    },
     draw,
     pick,
     update,

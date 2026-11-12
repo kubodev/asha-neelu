@@ -1,7 +1,8 @@
 import { icon } from "./icons.js";
 import { features as baseline, metersPerUnit, boundary } from "./geography.js";
 import { photos, references } from "./photos.js";
-import { createScene } from "./scene.js";
+import { createTankIoT } from "./tank-iot.js";
+import { createScene } from "./scene.js?v=depth-fix-2";
 import {
   stages,
   findings as reportedFindings,
@@ -102,7 +103,9 @@ try {
   storageWarning =
     "Browser storage could not be loaded. Using the supplied baseline.";
 }
-let data = applyEdits(config),
+let tankIoT;
+let activeStage = 1;
+let data = applyEdits(config, activeStage),
   scene,
   mode = "orbit",
   selected = null,
@@ -254,7 +257,7 @@ function inspect(f, focus = false) {
     "</section>";
 }
 function refresh() {
-  data = applyEdits(config);
+  data = applyEdits(config, activeStage);
   scene?.setFeatures(data);
   if (selected && feature(selected)) inspect(feature(selected));
   else overview();
@@ -279,7 +282,7 @@ function change(mut) {
 function showAbout() {
   modal(
     "About this model",
-    '<div class="info-text"><div class="kicker">STAGE 1 · CURRENT SITUATION</div><p>The model covers the measured Malkapuram study boundary and its immediate surroundings. The supplied measurement is 35,317.76 m². Map distances use an approximate local scale.</p><h3 class="group-head">Source imagery</h3><p>Six overhead and map references establish the shoreline, streets, roof outlines and landmark labels. Fourteen ground views document visible materials and road conditions. Most dated street views are from September 2026. One lane view is from July 2022. Satellite capture dates are unknown.</p><h3 class="group-head">Reading the reconstruction</h3><p>Labelled landmarks are confirmed by the supplied maps. Roof outlines, road alignments and tree clusters are visually inferred. Heights, hidden façades, terrain and photo positions are approximate. Image-up is assumed north.</p><p>The water colour follows overhead imagery. Water quality and household connections require independent field evidence.</p></div><div class="row">' +
+    '<div class="info-text"><div class="kicker">STAGE 1 · CURRENT SITUATION</div><p>The model covers the measured Malkapuram study boundary and its immediate surroundings. The supplied measurement is 35,317.76 m². Map distances use an approximate local scale.</p><h3 class="group-head">Source imagery</h3><p>Six overhead and map references establish the shoreline, streets, roof outlines and landmark labels. Fourteen ground views document visible materials and road conditions. Most dated street views are from September 2026. One lane view is from July 2022. Satellite capture dates are unknown.</p><h3 class="group-head">Reading the reconstruction</h3><p>Labelled landmarks are confirmed by the supplied maps. Roof outlines, road alignments and tree clusters are visually inferred. Heights, hidden façades, terrain and photo positions are approximate. Image-up is assumed north.</p><p>The reservoir surface is an illustrative stagnant-water treatment representing reported water-quality concerns; it is not a test result or verified assessment. Water quality and household connections require independent field evidence.</p></div><div class="row">' +
       btn("library", "Reference library", "photo") +
       btn("editor", "Working configuration", "edit") +
       "</div>",
@@ -427,6 +430,8 @@ function drawPins() {
     if (layers.labels[1] && ["map", "orbit"].includes(mode)) {
       for (const id of [
         "W-001",
+        "KRISHNA-001",
+        ...(lastCamera?.distance > 2500 && activeStage === 2 ? ["RIVER-PIPE-001"] : []),
         "L-001",
         "R-005",
         ...(lastCamera?.distance < 950 ? ["L-002", "L-003"] : []),
@@ -441,7 +446,7 @@ function drawPins() {
         const [x, z] = center(f);
         entries.push([
           id,
-          scene.project(x, z, 5),
+          scene.project(x, z, f.kind === "iotDevice" ? f.height+2 : 5),
           config.overrides[id]?.name ||
             {
               "W-001": "Reservoir",
@@ -830,7 +835,7 @@ function help() {
   );
   $("quality").value = quality;
 }
-let quality = "medium";
+let quality = "high";
 function exportFile() {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(config, null, 2)], { type: "application/json" }),
@@ -966,8 +971,16 @@ document.addEventListener("click", async (e) => {
     case "findings":
       findings();
       break;
+    case "iot":
+      if(activeStage!==2) document.querySelector('[data-action="stage"][data-value="2"]').click();
+      tankIoT?.open();
+      scene?.focus(feature("TANK-001"));
+      break;
     case "help":
       help();
+      break;
+    case "reload-3d":
+      window.location.reload();
       break;
     case "photo":
     case "library-photo":
@@ -984,6 +997,12 @@ document.addEventListener("click", async (e) => {
         true,
       );
       break;
+    case "map-tools": {
+      const controls=$("map-controls");
+      controls.hidden=!controls.hidden;
+      $("toggle-map-tools").setAttribute("aria-expanded",String(!controls.hidden));
+      break;
+    }
     case "mode":
       menus($("mode-menu").hidden ? "mode" : null);
       break;
@@ -1025,6 +1044,10 @@ document.addEventListener("click", async (e) => {
       break;
     case "move":
       scene?.move(v);
+      break;
+    case "region":
+      setMode("orbit");
+      scene?.setCamera({ mode:"orbit", target:[0,0,-3000], yaw:0, pitch:1.25, distance:14500 });
       break;
     case "sidebar":
       togglePanel();
@@ -1071,8 +1094,23 @@ document.addEventListener("click", async (e) => {
       document.body.classList.toggle("present");
       break;
     case "stage":
-      if (v === "1") {
-        toast("Stage 1 · Current Situation");
+      if (stages.some(s => String(s.id) === v && s.available)) {
+        activeStage = Number(v);
+        tankIoT?.setActive(activeStage===2);
+        document.querySelector(".stage-status").lastChild.textContent =
+          " Stage " + v + " · " + stages.find(stage => stage.id === activeStage).title;
+        document.querySelectorAll(".stage").forEach(button => {
+          const current=button.dataset.value === v;
+          button.classList.toggle("current", current);
+          button.setAttribute("aria-pressed",String(current));
+          if(current)button.scrollIntoView({behavior:"smooth",block:"nearest",inline:"nearest"});
+        });
+        selected = null;
+        data = applyEdits(config, activeStage);
+        scene?.setFeatures(data);
+        overview();
+        drawPins();
+        toast("Stage " + v + " · " + stages.find(s=>s.id===activeStage).title);
       } else {
         toast("Stage " + v + " · Not built yet");
       }
@@ -1168,8 +1206,8 @@ $("stages").innerHTML = stages
   .map(
     (s) =>
       '<button class="stage ' +
-      (s.available ? "current" : "") +
-      '" data-action="stage" data-value="' +
+      (s.id === activeStage ? "current" : "") +
+      '" aria-pressed="' + (s.id === activeStage) + '" data-action="stage" data-value="' +
       s.id +
       '" title="' +
       (s.available ? s.title : "Not built yet") +
@@ -1182,6 +1220,13 @@ $("stages").innerHTML = stages
       "</strong></span></button>",
   )
   .join("");
+$("stages").addEventListener("wheel",event=>{
+  const timeline=$("stages");
+  if(timeline.scrollWidth<=timeline.clientWidth || Math.abs(event.deltaX)>Math.abs(event.deltaY))return;
+  const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?timeline.clientWidth:1);
+  timeline.scrollLeft+=delta;
+  event.preventDefault();
+},{passive:false});
 if (matchMedia("(max-width:720px)").matches)
   document.querySelector(".workspace").classList.add("collapsed");
 try {
@@ -1205,8 +1250,15 @@ try {
     drawPins();
   }
 } catch (e) {
-  $("load").textContent =
-    "The 3D view needs WebGL. Enable hardware acceleration or try another browser. The site references and findings remain available.";
+  $("load").hidden = false;
+  $("load").textContent = "The 3D view could not start. " + (e?.message || String(e));
+  const retry=document.createElement("button");
+  retry.textContent="Reload 3D view";
+  retry.dataset.action="reload-3d";
+  $("load").append(document.createElement("br"),retry);
   console.error(e);
 }
+tankIoT=createTankIoT($("scene").parentNode,(values,aux)=>scene?.setTankIoT(values,aux),id=>{
+  scene?.focus(feature(id));
+});
 if (storageWarning) toast(storageWarning);
