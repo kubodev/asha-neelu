@@ -65,7 +65,14 @@
           ></canvas>
           <div id="pins"></div>
           <div id="load">Loading village model…</div>
-          <button id="toggle-map-tools" data-action="map-tools" aria-expanded="false" aria-controls="map-controls">Map tools</button>
+          <div class="judge-controls"><button id="start-guide">Start guided tour</button><button id="systems-button" data-action="iot" hidden>Village systems</button></div>
+          <section id="fish-income" hidden><strong>Community fish farming</strong><p></p></section>
+          <section id="guide" aria-label="Guided tour" hidden>
+            <progress aria-label="Tour progress" max="1"></progress>
+            <div class="guide-body"><small></small><h2></h2><p class="caption"></p><p class="telemetry"></p>
+            <div class="guide-buttons"><button data-guide="prev">Back</button><button data-guide="pause">Pause</button><button data-guide="next">Next</button><button data-guide="exit">Exit tour</button></div></div>
+          </section>
+          <button id="toggle-map-tools" data-action="map-tools" aria-expanded="false" aria-controls="map-controls">Explore map</button>
           <div id="map-controls" hidden>
             <div class="map-top">
               <div class="map-dropdown">
@@ -150,6 +157,6 @@
       <div id="dialog-body"></div>
     </dialog>
     <div id="toast" role="status"></div>
-    <script type="module" src="./app.js?v=depth-fix-2"></script>
+    <script type="module" src="./app.js?v=fish-stage"></script>
   </body>
 </html>

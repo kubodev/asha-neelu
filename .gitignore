@@ -6,3 +6,8 @@ node_modules/
 *.pem
 *.key
 __pycache__/
+
+mobile/google-services.json
+mobile/.expo/
+mobile/android/
+mobile/ios/

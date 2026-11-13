@@ -1,3 +1,4 @@
+import {fishery} from "./aquaculture.js";
 import { iotDevices, iotPowerCables } from "./scene-iot.js";
 import { distributionPipes } from "./scene-distribution.js";
 import { electricityFeatures } from "./scene-electricity.js";
@@ -31,9 +32,10 @@ export const stages = [
   },
   {
     id: 3,
-    title: "Future Expansion",
-    available: false,
-    additions: [],
+    title: "Fish farming",
+    available: true,
+    inherits: 2,
+    additions: [fishery],
     removals: [],
     overrides: {},
   },
@@ -75,11 +77,11 @@ export const findings = observations.map(([title, description], i) => ({
 export function stageFeatures(stageId) {
   const stage = stages.find((s) => s.id === stageId && s.available);
   if (!stage) throw Error("Not built yet");
+  const base=stage.inherits?stageFeatures(stage.inherits):[...features,...regionalFeatures];
   return [
-    ...features
+    ...base
       .filter((f) => !stage.removals.includes(f.id))
       .map((f) => ({ ...f, ...stage.overrides[f.id] })),
-    ...regionalFeatures,
     ...stage.additions,
   ];
 }
@@ -209,7 +211,7 @@ export function applyEdits(c, stageId = 1) {
       points,
     };
   });
-  if (stageId !== 2) return edited;
+  if (stageId < 2) return edited;
   return [...edited.filter(f => f.id !== "PIPE-002" && !f.id.startsWith("BRANCH-")),
     ...distributionPipes(edited)];
 }

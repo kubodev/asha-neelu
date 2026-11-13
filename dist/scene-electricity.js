@@ -1,3 +1,4 @@
+import { networkLine } from "./scene-network.js";
 import { writeNameplate } from "./scene-labels.js";
 import { features } from "./geography.js";
 import { inside, nearest } from "./scene-math.js";
@@ -11,12 +12,17 @@ const cabinets = cabinetNames.map((name,i) => {
   return proposal(`ELEC-BOX-${i+1}`,name,"electricalBox",[[x-2.5,z-2],[x+2.5,z-2],[x+2.5,z+2],[x-2.5,z+2]],{labelIndex:i,height:7});
 });
 const wire = (id,name,route,color=[.16,.18,.20]) => proposal(id,name,"powerCable",route.map(p=>[p[0],p[2]]),{route,color});
+const pond=features.find(f=>f.id==="W-001");
+// Follow the north bank below grade, resurfacing at the pump terminal.
+const pumpFeed=[[69.5,3,-118],[69.5,-1.6,-118],
+  ...pond.points.slice(0,14).map(([x,z])=>[x,-1.6,z+1.5]),
+  [324,-1.6,-46],[324,3,-46]];
 const cables = [
   wire("SOLAR-DC","Floating solar array to DC combiner",[[174,1.2,-97],[112,1.2,-125],[92,1.2,-140],[67,1.2,-140],[67,3,-134]],[.75,.20,.10]),
   wire("DC-INVERTER","DC combiner to solar inverter",[[69.5,3,-134],[72,3,-134],[72,3,-126],[69.5,3,-126]],[.75,.20,.10]),
+  wire("PUMP-FEED","Distribution box to intake pump",pumpFeed),
   wire("AC-BUS","Inverter AC output to distribution box",[[69.5,3,-126],[73,3,-126],[73,3,-118],[69.5,3,-118]]),
 ];
-const pond=features.find(f=>f.id==="W-001");
 const center=pond.points.reduce((c,p)=>[c[0]+p[0]/pond.points.length,c[1]+p[1]/pond.points.length],[0,0]);
 const perimeter=pond.points.filter((_,i)=>i%3===0).map(([x,z])=>{
   const dx=x-center[0],dz=z-center[1],length=Math.hypot(dx,dz);
@@ -93,7 +99,8 @@ export function renderElectricity(mesh, feature, id) {
       [b[0],b[1]+width,b[2]],[a[0],a[1]+width,a[2]],color,12,id);
   }
   if(feature.kind==="powerCable") {
-    for(let i=1;i<feature.route.length;i++)beam(feature.route[i-1],feature.route[i],.10,feature.color);
+    const circuit=feature.id==="PUMP-FEED"?39:feature.id.startsWith("AERATOR-")?40:/^(FEEDER|LIGHTING)/.test(feature.id)?41:36;
+    networkLine(mesh,feature.route,.17,circuit,id);
     return;
   }
   const x=feature.points.reduce((s,p)=>s+p[0]/feature.points.length,0);

@@ -593,9 +593,11 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
       "The 3D graphics session was interrupted. Reload this page to recover the model.",
     );
   });
+  let animationTime=0,animationPaused=false;
   function frame(time) {
     if (!alive) return;
     const dt = Math.min(0.05, (time - lastTick) / 1000 || 0);
+    if(!animationPaused && !document.hidden)animationTime+=Math.min(.2,(time-lastTick)/1000);
     lastTick = time;
     if (transition) {
       const t = clamp((time - transition.start) / 500, 0, 1),
@@ -622,7 +624,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
       update();
     }
     if (dirty || (!reduced.matches && layers.water && time - lastRender > 75)) {
-      gpu.draw(matrices, layers, selected, reduced.matches ? 0 : time / 1000);
+      gpu.draw(matrices, layers, selected, reduced.matches ? 0 : animationTime);
       dirty = false;
       lastRender = time;
     }
@@ -632,7 +634,7 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
     if (!b || !["orbit", "map", "walk", "fly"].includes(b.mode)) return;
     const nums = [b.yaw, b.pitch, b.distance];
     if (!nums.every(Number.isFinite)) return;
-    setMode(b.mode);
+    if(mode!==b.mode)setMode(b.mode);
     transition = null;
     fitting = false;
     if (
@@ -676,7 +678,8 @@ export function createScene(canvas, { onSelect, onCamera, onError } = {}) {
   resize();
   frameId = requestAnimationFrame(frame);
   return {
-    setTankIoT(values,aux) { gpu.setTankIoT(values,aux); dirty=true; },
+    pauseAnimation(value){animationPaused=value;},
+    setTankIoT(...values) { gpu.setTankIoT(...values); dirty=true; },
     setMode,
     zoom,
     fit,

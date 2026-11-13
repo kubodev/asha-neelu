@@ -206,6 +206,14 @@ export function buildMeshes(features, extent) {
       roads.ribbon(pts, (f.width || 9) + 1.8, 0.17, [0.57, 0.51, 0.42], 7, id);
       roads.ribbon(pts, f.width || 9, 0.22, rgb(f.color, "#a39d8c"), f.surface === "Paved" ? 15 : 16, id);
     }
+    if (f.kind==="powerPole" || f.deviceType==="aerator") {
+      const [x,z]=pts[0],lamp=f.kind==="powerPole";
+      // Local coordinates give the lamp halo and aerator ripples soft edges.
+      for(const [u,v] of [[-1,-1],[1,-1],[1,1],[-1,-1],[1,1],[-1,1]]) {
+        const point=lamp?[x+4,21.55,z]:[x+u*7,.28,z+v*9];
+        filterFlow.data.push(...point,u,v,0,lamp?42:43,id);
+      }
+    }
     if (f.kind === "filter") renderFilterFlow(filterFlow, f, id);
     if (f.kind === "iotDevice") renderIoT(electrical, f, id);
     if (["electricalBox", "powerPole", "powerCable"].includes(f.kind))
@@ -216,6 +224,7 @@ export function buildMeshes(features, extent) {
       land.ribbon([...pts,pts[0]], 34, .02, [.68,.58,.43], 18, id);
     }
     if (f.kind === "pipe" && f.underground) {
+      let travelled=0;
       // Surface overlay indicates the buried route with evenly spaced blueprint dashes.
       for (let i=1;i<f.route.length;i++) {
         const a=f.route[i-1], b=f.route[i];
@@ -226,8 +235,9 @@ export function buildMeshes(features, extent) {
             a[0]+(b[0]-a[0])*distance/length,
             a[2]+(b[2]-a[2])*distance/length,
           ];
-          blueprint.ribbon([at(start),at(end)],f.blueprintWidth,.3,[.08,.62,.95],21,id);
+          blueprint.ribbon([at(start),at(end)],f.blueprintWidth,.3,[travelled+start,0,0],21,id);
         }
+        travelled+=length;
       }
     }
     if (f.kind === "solar") floatingArray(solar, f, id);

@@ -26,6 +26,56 @@ function pipe(id,name,route,properties={}) {
 }
 const raised = point => [point[0],1.4,point[1]];
 
+// Road traces have arbitrary drawing directions. Split at junctions and trace
+// distance from the tank so the flow highlight moves outwards on each street.
+function traceMains(pipes,source) {
+  const nodes=new Map();
+  function node(point){
+    const key=point.map(n=>Math.round(n*100)).join(",");
+    if(!nodes.has(key))nodes.set(key,{point,links:[],distance:Infinity});
+    return nodes.get(key);
+  }
+  const spans=pipes.flatMap(pipe=>segments(pipe.points).map(([a,b])=>({a,b,pipe,cuts:[node(a),node(b)]})));
+  const root=node(source);
+  for(const span of spans){
+    const {a,b}=span;
+    if(distance(nearest(...source,a,b),source)<.011)span.cuts.push(root);
+  }
+  for(let i=0;i<spans.length;i++)for(const other of spans.slice(i+1)){
+    const span=spans[i];
+    const [a,b]=closestSegments(span.a,span.b,other.a,other.b);
+    if(distance(a,b)<.011){
+      const junction=node(a);
+      span.cuts.push(junction);other.cuts.push(junction);
+    }
+  }
+  const edges=[];
+  for(const span of spans){
+    const ordered=[...new Set(span.cuts)].sort((a,b)=>distance(a.point,span.a)-distance(b.point,span.a));
+    for(const [a,b] of segments(ordered)){
+      const length=distance(a.point,b.point);
+      a.links.push([b,length]);b.links.push([a,length]);edges.push({a,b,length,pipe:span.pipe});
+    }
+  }
+  root.distance=0;
+  const pending=new Set(nodes.values());
+  while(pending.size){
+    let next;
+    for(const n of pending)if(!next || n.distance<next.distance)next=n;
+    pending.delete(next);
+    for(const [other,length] of next.links)other.distance=Math.min(other.distance,next.distance+length);
+  }
+  for(const {a,b,length,pipe} of edges){
+    if(!Number.isFinite(a.distance))continue;
+    const meet=Math.max(0,Math.min(length,(b.distance+length-a.distance)/2));
+    const middle=a.point.map((v,i)=>v+(b.point[i]-v)*meet/length);
+    pipe.flowSections??=[];
+    for(const [origin,run] of [[a,meet],[b,length-meet]]){
+      if(run>.001)pipe.flowSections.push({route:[raised(origin.point),raised(middle)],offset:origin.distance});
+    }
+  }
+}
+
 export function distributionPipes(features) {
   const mainRoad=features.find(f=>f.id==="R-001");
   const reservoir=features.find(f=>f.id==="W-001");
@@ -102,6 +152,7 @@ export function distributionPipes(features) {
     .sort((a,b)=>distance(a,point)-distance(b,point))[0];
   const outlet=[center[0]+14,center[1]];
   const junctionPoint=nearestRoad(outlet);
+  traceMains(pipes,junctionPoint);
   pipes.push(pipe("PIPE-002","Storage tank outlet to village distribution network",[
     [center[0]+5.3,14,center[1]],[outlet[0],14,outlet[1]],
     raised(outlet),raised(junctionPoint),

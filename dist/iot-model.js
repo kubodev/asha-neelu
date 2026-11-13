@@ -1,7 +1,8 @@
 // Demonstration limits and capacities, to be replaced by commissioned site settings.
 export const demoLimits = { turbidity: 1, phMin: 6.5, phMax: 8.5, chlorineMin: .2, chlorineMax: 1 };
 export const capacities = { main:10000, lower:3000 };
-export function createIoTModel(onEvent=()=>{}) {
+// Illustrative equipment ratings. Pump priority, then seven aerators, then dimmable lamps.
+export function createIoTModel(onEvent=()=>{}, lampCount=72) {
   let state,events,elapsed,surge,previous="",sequence=0;
   const emit=(type,message,severity="info")=>{
     const event={id:`${state.session}-${++sequence}`,timestamp:new Date().toISOString(),
@@ -20,13 +21,17 @@ export function createIoTModel(onEvent=()=>{}) {
   }
   function control() {
     const problems=issues();
+    state.generation=18*.4*state.solar/100;
+    const available=state.generation*.93; // inverter output in kW
+    const pumpPower=2.4;
     if(problems.length && !state.latched) {
       state.latched=true;
       emit("alarm",problems.join(" "),"critical");
     }
     let status;
     if(state.latched){state.pump=false;status="Supply held · operator attention";}
-    else if(state.solar<15){state.pump=false;status="Low solar · pump stopped";}
+    else if(state.reserve<600){state.pump=false;status="Reservoir intake low · waiting for refill";}
+    else if(available<pumpPower){state.pump=false;status="Low solar · pump stopped";}
     else if(state.lower>=capacities.lower*.95){state.pump=false;status="Lower tank high · pump stopped";}
     else {
       if(state.mode==="auto") {
@@ -36,21 +41,31 @@ export function createIoTModel(onEvent=()=>{}) {
       status=state.pump?"Pump ON · filling storage":"Pump OFF · supplying homes";
     }
     state.supplyOpen=!state.latched;
+    let remaining=available-(state.pump?pumpPower:0);
+    state.aerating=state.aerators && remaining>=1.26;
+    if(state.aerating)remaining-=1.26;
+    state.lightLevel=Math.min(1,Math.max(0,remaining)/(Math.max(1,lampCount)*.02));
+    state.lamps=state.lightLevel>.01?lampCount:0;
+    state.usedPower=available-remaining+lampCount*.02*state.lightLevel;
+    state.homeFlow=state.supplyOpen && state.main>0?state.demand:0;
+    state.tapFlow=state.supplyOpen && state.tap && state.lower>0?60:0;
     state.status=status;
     state.problems=problems;
     if(status!==previous){emit("controller",status,state.latched?"critical":"info");previous=status;}
     state.advice=problems[0] || (state.latched
       ? "Readings have recovered. Inspect the equipment, then acknowledge the alert to resume supply."
-      : state.solar<15 ? "Solar power is low. The pump is waiting. Stored water can continue to supply homes."
+      : available<pumpPower ? "Solar power is low. The pump is waiting. Stored water can continue to supply homes."
       : state.lower>=capacities.lower*.95 ? "The lower tank is almost full. The inlet pump is stopped. Check collection capacity."
       : state.pump ? "Storage is low. The controller is filling it and will stop the pump at 90%."
       : "The inlet pump is resting. Stored water is available, and auto mode restarts filling below 35%.");
     state.flow=state.pump&&!state.dryRun?600:0;
+    // Maintain the demo working reserve through the proposed external river supply.
+    state.riverFlow=Math.min(700,state.flow+Math.max(0,60000-state.reserve));
     return snapshot();
   }
   function snapshot(){return {...state,events:[...events],elapsed};}
   function reset(){
-    state={session:Date.now(),main:4200,lower:360,mode:"auto",pump:false,solar:85,demand:160,tap:false,
+    state={session:Date.now(),reserve:60000,overflowLitres:0,solarKwh:0,main:4200,lower:360,delivered:0,collected:0,mode:"auto",pump:false,solar:85,demand:160,tap:false,
       sensor:true,running:true,turbidity:.45,ph:7.2,chlorine:.45,dryRun:false,aerators:true,latched:false};
     events=[];elapsed=0;surge=0;previous="";sequence=0;emit("startup","Demo controller connected to level, flow, turbidity, pH and chlorine sensors.");
     return control();
@@ -62,6 +77,8 @@ export function createIoTModel(onEvent=()=>{}) {
     return control();
   }
   function scenario(name){
+    if(name==="shade")state.solar=0;
+    if(name==="sun")state.solar=85;
     if(name==="low"){state.main=2500;state.mode="auto";}
     if(name==="overflow"){state.main=9900;surge=1800;}
     if(name==="cloudy")state.turbidity=6;
@@ -78,8 +95,10 @@ export function createIoTModel(onEvent=()=>{}) {
     return control();
   }
   function step(dt=.25){
-    if(!state.running)return snapshot();
+    if(!state.running || !Number.isFinite(dt) || dt<=0)return snapshot();
     elapsed+=dt;
+    state.solarKwh+=state.generation*dt/60;
+    state.reserve+=(state.riverFlow-state.flow)*dt;
     const extra=Math.min(surge,300*dt);surge-=extra;
     const supplied=state.supplyOpen?Math.min(state.main,state.demand*dt):0;
     const volume=state.main+state.flow*dt+extra-supplied;
@@ -87,6 +106,9 @@ export function createIoTModel(onEvent=()=>{}) {
     state.main=Math.min(capacities.main,Math.max(0,volume));
     if(overflow>0 && !state.overflowing)emit("overflow","Main tank overflow is entering the lower collection tank.","warning");
     state.overflowing=overflow>0;
+    state.overflowLitres+=overflow;
+    state.delivered+=supplied;
+    state.collected+=Math.min(state.lower+overflow,state.tap&&state.supplyOpen?60*dt:0);
     state.lower=Math.min(capacities.lower,Math.max(0,state.lower+overflow-(state.tap&&state.supplyOpen?60*dt:0)));
     if(state.lower>=capacities.lower*.95&&!state.lowerAlarm){state.lowerAlarm=true;emit("alarm","Lower tank level is high. Pump stopped.","warning");}
     if(state.lower<capacities.lower*.90)state.lowerAlarm=false;

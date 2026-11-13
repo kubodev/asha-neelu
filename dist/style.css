@@ -1264,3 +1264,59 @@ body.map-layout { overflow: hidden; }
 .iot-content summary { cursor: pointer; font-weight: 600; font-size: 12px; }
 .iot-events [data-severity="critical"] { color: #a63e29; font-weight: 600; }
 .iot-events [data-severity="warning"] { color: #946125; }
+
+.map-layout .timeline {width:min(530px,calc(100% - 22px))}
+.map-layout #stages {gap:4px;padding:0}
+.map-layout .stage {flex:1 1 0;min-width:0}
+.judge-controls {position:absolute;z-index:8;bottom:max(20px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:7px;white-space:nowrap}
+.judge-controls button,#guide button,.system-sheet button {border:1px solid #bbcbbb;border-radius:8px;padding:9px 14px;font:600 13px/1.25 system-ui;background:#f7faf4;color:#244234;cursor:pointer}
+#start-guide,.guide-buttons [data-guide="next"] {background:#163e32;color:white;border-color:#163e32}
+#start-guide {padding:12px 23px;box-shadow:0 3px 18px #18291e33}
+#guide,.system-sheet {position:absolute;z-index:16;color:#183a2e;background:#fcfdf7f7;border:1px solid #bfccbc;border-radius:14px;box-shadow:0 8px 34px #18291e30}
+#guide {bottom:max(15px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(860px,calc(100% - 24px));max-height:56dvh;overflow:auto}
+#guide progress {display:block;width:100%;height:4px;border:0;accent-color:#257955}
+.guide-body {padding:14px clamp(16px,2vw,28px) 18px}
+.guide-body small,.system-sheet header small {font:700 10px/1.3 system-ui;letter-spacing:.12em;color:#577161}
+.guide-body h2,.system-sheet h2 {font:650 22px/1.15 system-ui;margin:4px 0 7px;letter-spacing:-.035em}
+.guide-body p,.system-sheet p {font:14px/1.4 system-ui;margin:5px 0}
+.guide-body h2 {font-size:clamp(24px,2.5vw,38px)}
+.guide-body small {font-size:14px}
+.guide-body .caption {font-size:clamp(18px,1.6vw,25px)}
+#guide button {font-size:clamp(16px,1.3vw,20px)}
+#guide [data-guide="next"] {background:#163e32;color:white}
+.guide-body .telemetry {font-size:clamp(16px,1.4vw,21px);font-weight:650;color:#286649}
+.guide-body .alert,.system-message.alarm {color:#942e1b}
+.guide-buttons,.system-actions {display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.guide-buttons button:last-child {margin-left:auto}
+.guiding .judge-controls,.guiding #toggle-map-tools,.guiding #pins {display:none}
+.guiding #scene,.guiding .timeline {pointer-events:none}
+.system-sheet {right:15px;bottom:76px;width:min(430px,calc(100% - 30px));max-height:calc(100% - 174px);overflow:auto;padding:16px}
+.system-sheet header {display:flex;align-items:center;justify-content:space-between}
+.system-sheet header button {font-size:19px;padding:3px 10px}
+.system-sheet .system-message,.system-sheet button {font-size:16px}
+.system-message {padding:9px 11px;background:#e8f0e5;border-radius:7px}
+.system-message.alarm {background:#fce6dd}
+.system-readings {display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 0}
+.system-readings div {display:grid;font:16px/1.5 system-ui;color:#516557}
+.system-readings strong {font-size:25px;color:#203f30}
+.system-readings progress {width:90%;height:4px;accent-color:#298765}
+.system-sheet details {font-size:16px;border-top:1px solid #d4ddd2;padding-top:11px;margin-top:13px}
+.system-sheet details p,.system-sheet li {font-size:15px;line-height:1.5}
+.system-sheet ol {padding-left:18px}
+@media(max-width:620px){
+ .map-layout #toggle-map-tools {bottom:70px}
+ .map-layout #map-controls {bottom:116px}
+ .guide-body {padding:10px 12px}
+}
+@media(max-height:520px) and (min-width:650px){
+ #guide {width:min(48%,560px);max-height:75dvh;left:12px;transform:none;bottom:8px}
+}
+.system-sheet header {height:auto;gap:12px;padding:0;border:0;background:transparent}
+.judge-controls .system-alert {background:#fbe6dc;border-color:#c47358;color:#822f1d}
+#fish-income {position:absolute;left:50%;transform:translateX(-50%);bottom:80px;width:min(460px,calc(100% - 34px));padding:12px 18px;border-radius:12px;background:#fbfdf8f2;color:#173e34;box-shadow:0 3px 18px #183e3229}
+#fish-income p {margin:5px 0 0;font-size:15px;line-height:1.4}
+.guiding #fish-income {display:none}
+@media(max-width:600px){
+ .map-layout .stage-num {display:none}
+ .map-layout .stage {padding:6px;justify-content:center;text-align:center;white-space:normal}
+}

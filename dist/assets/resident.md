@@ -1,0 +1,1 @@
+Resident geometry derives from the CC0 [MakeHuman hm08 anatomical mesh](https://github.com/makehumancommunity/makehuman/blob/master/makehuman/data/3dobjs/base.obj), including its garment fitting surface and eye geometry. The viewer uses locally packaged geometry, shaded garments and an articulated ten-joint pose.

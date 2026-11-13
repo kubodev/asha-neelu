@@ -1,0 +1,19 @@
+{
+  "name": "village-water",
+  "private": true,
+  "version": "1.0.0",
+  "main": "expo/AppEntry",
+  "scripts": {
+    "start": "expo start --go"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.49.4",
+    "expo": "~58.0.25",
+    "expo-audio": "~58.0.12",
+    "expo-constants": "~58.0.16",
+    "expo-notifications": "~58.1.9",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-url-polyfill": "^2.0.0"
+  }
+}

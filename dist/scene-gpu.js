@@ -1,3 +1,4 @@
+import {createVillageLife} from "./scene-residents.js";
 import { cabinetLabels } from "./scene-electricity.js";
 import { buildMeshes } from "./scene-mesh.js";
 import { waterAppearance } from "./water.js";
@@ -7,7 +8,9 @@ const vertex = `
 attribute vec3 position, color;
 attribute float material, feature, treeId;
 attribute vec4 instance;
-uniform mat4 camera;
+uniform mat4 camera, pose[10];
+uniform vec3 fabric;
+uniform vec3 eyePosition;
 uniform bool tree;
 uniform float time;
 uniform vec2 iotAux;
@@ -31,6 +34,18 @@ void main() {
     world=color+vec3(local.x,local.y*cos(angle)-local.z*sin(angle),local.y*sin(angle)+local.z*cos(angle));
     tint=vec3(.22,.57,.62);
   }
+  if(material>41.5 && material<42.5){
+    vec3 sight=normalize(eyePosition-position);
+    vec3 right=normalize(vec3(sight.z+.0001,0.,-sight.x));
+    world+=(right*color.x+cross(sight,right)*color.y)*2.6;
+  }
+  if(material>=44.){
+    int first=int(floor(feature/16.)),second=int(mod(floor(feature),16.));
+    vec4 local=vec4(position,1.);
+    world=mix(pose[first]*local,pose[second]*local,fract(feature)/.99).xyz;
+    if(material>44.5)tint*=fabric;
+    objectId=0.;
+  }
   gl_Position = camera * vec4(world,1.);
 }`;
 const fragment = `
@@ -40,8 +55,9 @@ varying float surface, objectId;
 uniform bool picking, imagery;
 uniform float time, selected;
 uniform vec2 extent;
-uniform vec3 waterStyle;
-uniform vec4 tankIoT;
+uniform vec3 waterStyle,fishWater;
+uniform vec4 tankIoT, network;
+uniform float tapFlow, riverFlow;
 uniform vec2 iotAux;
 uniform sampler2D terrain, overhead, cabinetAtlas;
 float hash(vec2 p) {return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
@@ -79,6 +95,7 @@ void main(){
     cleanWater+=vec3(.035,.07,.075)*cleanRipple*detailVisibility(.48);
     c=mix(stagnant,sampleColor,waterStyle.x*.12);
     c=mix(c,cleanWater,waterStyle.y);
+    alpha=1.-fishWater.z*.65*(1.-smoothstep(13.,19.,distance(p,fishWater.xy)));
   } else if(surface>16.5 && surface<17.5) {
     float mud=noise(world.xz*.34)*.55+noise(world.xz*.91)*.3+noise(world.xz*2.7)*.15;
     c=mix(vec3(.22,.19,.13),vec3(.38,.32,.21),mud);
@@ -91,6 +108,29 @@ void main(){
     c *= .98+(.16*(cluster-.5)+.10*(hash(floor(p*2.))-.5))*detailVisibility(2.);
   } else if (surface>5.5 && surface<6.5) {
     alpha=.36;
+  } else if(surface>43.5){
+    c=tint;
+  } else if(surface>41.5){
+    float r=length(tint.xy);
+    if(surface<42.5){
+      c=vec3(1.,.87,.52);alpha=(1.-smoothstep(.03,1.,r))*network.w*.72;
+    }else{
+      float wave=smoothstep(.3,1.,sin(r*24.-time*4.2));
+      c=vec3(.66,.92,.92);alpha=wave*(1.-smoothstep(.22,1.,r))*iotAux.x*.5;
+    }
+  } else if(surface>33.5) {
+    float enabled=tankIoT.z;
+    bool electric=surface==36. || surface>=39.;
+    if(surface==35.)enabled=network.y;
+    if(surface==36.)enabled=network.x;
+    if(surface==37.)enabled=network.z;
+    if(surface==38.){enabled=tapFlow;if(enabled<.01)discard;}
+    if(surface==40.)enabled=iotAux.x;
+    if(surface==41.)enabled=network.w;
+    float band=smoothstep(.57,.95,fract(tint.x/(electric?12.:5.)-time*(electric?1.8:1.15)));
+    vec3 base=electric?vec3(.20,.19,.14):vec3(.04,.36,.54);
+    vec3 lit=electric?vec3(1.,.77,.28):vec3(.48,1.,1.);
+    c=mix(base,lit,(.22+.78*band)*enabled)*tint.y;
   } else if(surface>32.5 && surface<33.5) {
     c=tint; alpha=.12;
   } else if(surface>30.5 && surface<31.5) {
@@ -113,14 +153,14 @@ void main(){
   } else if(surface>26.5 && surface<27.5) {
     c=tankIoT.w>.5 ? vec3(.95,.19,.1) : tankIoT.z>.5 ? vec3(.1,.92,.35) : vec3(.95,.69,.14);
   } else if(surface>23.5 && surface<24.5) {
-    c=tint; alpha=.15;
+    c=tint; alpha=.29*network.w;
   } else if(surface>22.5 && surface<23.5) {
     float labelU=gl_FrontFacing ? tint.x : 1.-tint.x;
     c=texture2D(cabinetAtlas,vec2(labelU,(tint.z+tint.y)/16.)).rgb;
   } else if(surface>21.5 && surface<22.5) {
-    c=tint;
+    c=mix(vec3(.31,.34,.32),vec3(1.,.96,.69),network.w);
   } else if(surface>20.5 && surface<21.5) {
-    c=tint; alpha=.8;
+    c=mix(vec3(.08,.49,.85),vec3(.59,.96,1.),riverFlow*smoothstep(.45,.95,fract(tint.x/260.-time*.65))); alpha=.8;
   } else if(surface>19.5 && surface<20.5) {
     c=tint;
   } else if(surface>18.5 && surface<19.5) {
@@ -210,7 +250,7 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
   );
   const u = Object.fromEntries(
     [
-      "camera",
+      "camera","pose","fabric",
       "extent",
       "terrain",
       "overhead",
@@ -218,12 +258,12 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
       "time",
       "selected",
       "picking",
-      "waterStyle",
+      "waterStyle","fishWater",
       "imagery",
       "earthDetail",
       "eyePosition",
       "cabinetAtlas",
-      "tankIoT",
+      "tankIoT", "network", "tapFlow", "riverFlow",
       "iotAux",
       "detailResolution",
     ].map((k) => [k, gl.getUniformLocation(program, k)]),
@@ -329,7 +369,12 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     Object.values(batches).forEach((b) => gl.deleteBuffer(b.handle));
     if (instanceBuffer) gl.deleteBuffer(instanceBuffer);
   }
+  let hasFish=false;
   function update(items) {
+    life.update(items);
+    const fish=items.find(f=>f.kind==="fishery");
+    hasFish=Boolean(fish);
+    gl.uniform3f(u.fishWater,fish?.points[0][0]||0,fish?.points[0][1]||0,fish?1:0);
     releaseBuffers();
     const water = waterAppearance(items.find((f) => f.kind === "water"));
     gl.uniform3f(
@@ -348,11 +393,12 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     instanceData = instances;
     instanceBuffer = buffer(instances);
   }
-  update(features);
   const bind = (attr, size, stride, offset) => {
     gl.enableVertexAttribArray(attrs[attr]);
     gl.vertexAttribPointer(attrs[attr], size, gl.FLOAT, false, stride, offset);
   };
+  const life=createVillageLife(gl,bind,u,onAsset,onError);
+  update(features);
   function batch(key, trees = false) {
     const b = batches[key];
     if (!b?.count) return;
@@ -427,7 +473,20 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     }
     batch("electrical");
     gl.disable(gl.BLEND);
-    if (layers.water) batch("water");
+    if(layers.water){
+      if(!pick && hasFish){
+        // Lay down the pond colour, then composite the surface over the shoal.
+        gl.depthMask(false);
+        batch("water");
+        gl.depthMask(true);
+        life.drawFish(time);
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+      }
+      batch("water");
+      gl.disable(gl.BLEND);
+    }
     if (layers.buildings) {
       batch("buildings");
       if (layers.outlines) batch("outlines");
@@ -437,6 +496,7 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
       batch("fencePlants");
     }
     if (!pick) {
+      life.draw(time);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
@@ -462,7 +522,7 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     return pixel[0] + pixel[1] * 256 + pixel[2] * 65536;
   }
   return {
-    setTankIoT(values,aux=[1,1]) { gl.uniform4fv(u.tankIoT,values); gl.uniform2fv(u.iotAux,aux); },
+    setTankIoT(values,aux,network,tap,river) { life.setCollection(!!tap && !!network[2]); gl.uniform4fv(u.tankIoT,values); gl.uniform2fv(u.iotAux,aux); gl.uniform4fv(u.network,network); gl.uniform1f(u.tapFlow,tap); gl.uniform1f(u.riverFlow,river); },
     setEye(eye,pixelScale,mapDistance) {
       gl.uniform3fv(u.eyePosition,eye);
       gl.uniform2f(u.detailResolution,pixelScale,mapDistance);
@@ -472,6 +532,7 @@ export function createGpu(canvas, features, extent, onAsset, onError) {
     update,
     destroy() {
       destroyed = true;
+      life.destroy();
       releaseBuffers();
       textures.forEach((t) => gl.deleteTexture(t));
       gl.deleteProgram(program);

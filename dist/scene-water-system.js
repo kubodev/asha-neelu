@@ -1,3 +1,4 @@
+import { networkLine } from "./scene-network.js";
 // Stage 2 concept geometry, positioned in the open eastern half of the reservoir.
 const proposal = (id, name, kind, points, extra = {}) => ({
   id, name, kind, points, source: "Sociathon concept reference",
@@ -58,7 +59,10 @@ export function renderWaterSystem(mesh, feature, id) {
   if(feature.kind==="pipe") {
     if (feature.underground) return;
     const route=feature.route;
-    for(let i=1;i<route.length;i++)beam(route[i-1],route[i],feature.radius || .47,blue);
+    const transfer=feature.id==="PIPE-001" || feature.id==="FILTER-OUT-001";
+    if(feature.flowSections){
+      for(const section of feature.flowSections)networkLine(mesh,section.route,feature.radius,35,id,section.offset);
+    }else networkLine(mesh,route,feature.radius || .47,transfer?34:35,id);
     for(const p of route)beam([p[0],p[1]-.58,p[2]],[p[0],p[1]+.58,p[2]],feature.radius ? feature.radius*1.2 : .62,[.22,.73,.88]);
     return;
   }
@@ -101,9 +105,8 @@ export function renderWaterSystem(mesh, feature, id) {
     box(5,13,-1,2.5,4,3,[.62,.68,.67]);
     // Dedicated overflow pipe runs from the upper rim into the covered lower tank.
     const overflow = [[5.4,21,-2],[8.2,21,-2],[8.2,8.8,-2],[2.8,8.8,-2],[2.8,8.2,-2]];
-    for (let i=1;i<overflow.length;i++) {
-      beam(vertex(...overflow[i-1]),vertex(...overflow[i]),.36,blue);
-    }
+    networkLine(mesh,overflow.map(p=>vertex(...p)),.36,37,id);
+    networkLine(mesh,[vertex(9.5,2.5,0),vertex(9.5,.45,0)],.15,38,id);
     // A brass stand-off tap provides room beneath its downward spout for a vessel.
     const brass = [.67,.52,.22];
     beam(vertex(4.5,3.2,0),vertex(8.7,3.2,0),.27,blue);

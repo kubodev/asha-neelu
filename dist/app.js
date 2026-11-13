@@ -1,3 +1,4 @@
+import { createGuidedTour } from "./guided-tour.js";
 import { icon } from "./icons.js";
 import { features as baseline, metersPerUnit, boundary } from "./geography.js";
 import { photos, references } from "./photos.js";
@@ -12,7 +13,7 @@ import {
   empty,
   center,
   applyEdits,
-} from "./configuration.js";
+} from "./configuration.js?v=fish-stage";
 const $ = (id) => document.getElementById(id),
   esc = (v) =>
     String(v ?? "").replace(
@@ -103,7 +104,29 @@ try {
   storageWarning =
     "Browser storage could not be loaded. Using the supplied baseline.";
 }
-let tankIoT;
+let tankIoT,guide;
+function showStage(v){
+  if(activeStage===Number(v))return;
+  activeStage = Number(v);
+  $("systems-button").hidden=activeStage<2;
+  tankIoT?.setActive(activeStage>=2);
+  document.querySelector(".stage-status").lastChild.textContent =
+    " Stage " + v + " · " + stages.find(stage => stage.id === activeStage).title;
+  document.querySelectorAll(".stage").forEach(button => {
+    const current=Number(button.dataset.value) === activeStage;
+    button.classList.toggle("current", current);
+    button.setAttribute("aria-pressed",String(current));
+    if(current)button.scrollIntoView({behavior:"smooth",block:"nearest",inline:"nearest"});
+  });
+  selected = null;
+  data = applyEdits(config, activeStage);
+  scene?.setFeatures(data);
+  $("fish-income").hidden=activeStage!==3;
+  if(activeStage===3)$("fish-income").querySelector("p").textContent=feature("FISH-001").notes;
+  overview();
+  drawPins();
+}
+
 let activeStage = 1;
 let data = applyEdits(config, activeStage),
   scene,
@@ -423,7 +446,7 @@ function menus(open) {
 function drawPins() {
   cancelAnimationFrame(pinFrame);
   pinFrame = requestAnimationFrame(() => {
-    if (!scene) return;
+    if (!scene || guide?.active) return;
     const parent = $("pins"),
       entries = [],
       occupied = [];
@@ -431,7 +454,7 @@ function drawPins() {
       for (const id of [
         "W-001",
         "KRISHNA-001",
-        ...(lastCamera?.distance > 2500 && activeStage === 2 ? ["RIVER-PIPE-001"] : []),
+        ...(lastCamera?.distance > 2500 && activeStage >= 2 ? ["RIVER-PIPE-001"] : []),
         "L-001",
         "R-005",
         ...(lastCamera?.distance < 950 ? ["L-002", "L-003"] : []),
@@ -972,7 +995,10 @@ document.addEventListener("click", async (e) => {
       findings();
       break;
     case "iot":
-      if(activeStage!==2) document.querySelector('[data-action="stage"][data-value="2"]').click();
+      if(activeStage<2) document.querySelector('[data-action="stage"][data-value="2"]').click();
+      $("map-controls").hidden=true;
+      $("toggle-map-tools").setAttribute("aria-expanded","false");
+      document.querySelector(".workspace").classList.add("collapsed");
       tankIoT?.open();
       scene?.focus(feature("TANK-001"));
       break;
@@ -1064,8 +1090,7 @@ document.addEventListener("click", async (e) => {
       break;
     case "tour":
       endTour();
-      tourAt(0);
-      play();
+      $("start-guide").click();
       break;
     case "tour-play":
       if (interval) {
@@ -1095,22 +1120,13 @@ document.addEventListener("click", async (e) => {
       break;
     case "stage":
       if (stages.some(s => String(s.id) === v && s.available)) {
-        activeStage = Number(v);
-        tankIoT?.setActive(activeStage===2);
-        document.querySelector(".stage-status").lastChild.textContent =
-          " Stage " + v + " · " + stages.find(stage => stage.id === activeStage).title;
-        document.querySelectorAll(".stage").forEach(button => {
-          const current=button.dataset.value === v;
-          button.classList.toggle("current", current);
-          button.setAttribute("aria-pressed",String(current));
-          if(current)button.scrollIntoView({behavior:"smooth",block:"nearest",inline:"nearest"});
-        });
-        selected = null;
-        data = applyEdits(config, activeStage);
-        scene?.setFeatures(data);
-        overview();
-        drawPins();
-        toast("Stage " + v + " · " + stages.find(s=>s.id===activeStage).title);
+        guide?.stop();
+        showStage(Number(v));
+        if(activeStage===3){
+          const [x,z]=feature("FISH-001").points[0];
+          setMode("orbit");
+          scene?.setCamera({mode:"orbit",target:[x,0,z],yaw:-.44,pitch:.91,distance:42});
+        }else toast("Stage " + v + " · " + stages.find(s=>s.id===activeStage).title);
       } else {
         toast("Stage " + v + " · Not built yet");
       }
@@ -1202,7 +1218,7 @@ $("map-tools").innerHTML =
   tool("fit", "Fit village", "fit") +
   tool("present", "Toggle presentation mode", "monitor") +
   tool("full", "Fullscreen", "full");
-$("stages").innerHTML = stages
+$("stages").innerHTML = stages.filter(s=>s.available)
   .map(
     (s) =>
       '<button class="stage ' +
@@ -1258,7 +1274,16 @@ try {
   $("load").append(document.createElement("br"),retry);
   console.error(e);
 }
-tankIoT=createTankIoT($("scene").parentNode,(values,aux)=>scene?.setTankIoT(values,aux),id=>{
-  scene?.focus(feature(id));
-});
+tankIoT=createTankIoT($("scene").parentNode,(...values)=>scene?.setTankIoT(...values),toast);
+if(scene){
+  guide=createGuidedTour({scene,system:tankIoT,stage:showStage,prepare(){
+    endTour();tankIoT.close();setMode("orbit");
+    document.querySelector(".workspace").classList.add("collapsed");
+    $("map-controls").hidden=true;$("toggle-map-tools").setAttribute("aria-expanded","false");
+    for(const name of ["buildings","water","roads","vegetation"])scene.setLayer(name,layers[name][1]=true);
+  }});
+  const query=new URLSearchParams(location.search);
+  if(query.get("stage")==="3")$("stages").querySelector('[data-value="3"]').click();
+  else if(query.get("tour")==="1")$("start-guide").click();
+}else $("start-guide").disabled=true;
 if (storageWarning) toast(storageWarning);
